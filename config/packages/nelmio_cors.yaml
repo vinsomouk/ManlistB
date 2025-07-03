@@ -1,0 +1,11 @@
+nelmio_cors:
+    defaults:
+        origin_regex: true
+        allow_origin: ["http://localhost:5173"]  # Spécifiez l'origine exacte
+        allow_methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+        allow_headers: ["*"]
+        expose_headers: ["Link"]
+        max_age: 3600
+        allow_credentials: true  # Ajoutez cette ligne
+    paths:
+        "^/api/": ~
