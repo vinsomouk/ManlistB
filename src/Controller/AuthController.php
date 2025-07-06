@@ -89,7 +89,7 @@ class AuthController extends AbstractController
         ]);
     }
 
-    #[Route('/register', name: 'api_register_options', methods: ['OPTIONS'])]
+    #[Route('/register', name: 'api_register_options', methods: ['POST'])]
     public function options(): JsonResponse
     {
         return $this->json([], 200, [
