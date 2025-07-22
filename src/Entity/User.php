@@ -6,6 +6,8 @@ use App\Repository\UserRepository;
 use Doctrine\ORM\Mapping as ORM;
 use Symfony\Component\Security\Core\User\PasswordAuthenticatedUserInterface;
 use Symfony\Component\Security\Core\User\UserInterface;
+use Doctrine\Common\Collections\ArrayCollection;
+use Doctrine\Common\Collections\Collection;
 
 #[ORM\Entity(repositoryClass: UserRepository::class)]
 #[ORM\Table(name: '`user`')]
@@ -25,6 +27,8 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
      */
     #[ORM\Column]
     private array $roles = [];
+
+    
 
     /**
      * @var string The hashed password
@@ -132,5 +136,43 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     {
         $this->profilePicture = $profilePicture;
         return $this;
+    }
+
+    #[ORM\OneToMany(targetEntity: Watchlist::class, mappedBy: 'user', orphanRemoval: true)]
+private Collection $watchlists;
+
+public function __construct()
+{
+    $this->watchlists = new ArrayCollection();
+}
+
+/**
+ * @return Collection<int, Watchlist>
+ */
+public function getWatchlists(): Collection
+{
+    return $this->watchlists;
+}
+
+public function addWatchlist(Watchlist $watchlist): self
+{
+    if (!$this->watchlists->contains($watchlist)) {
+        $this->watchlists->add($watchlist);
+        $watchlist->setUser($this);
+    }
+
+    return $this;
+}
+
+public function removeWatchlist(Watchlist $watchlist): self
+{
+    if ($this->watchlists->removeElement($watchlist)) {
+        // set the owning side to null (unless already changed)
+        if ($watchlist->getUser() === $this) {
+            $watchlist->setUser(null);
+        }
+    }
+
+    return $this;
     }
 }
