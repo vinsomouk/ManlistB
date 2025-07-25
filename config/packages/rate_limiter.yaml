@@ -1,0 +1,8 @@
+# config/packages/rate_limiter.yaml
+framework:
+    rate_limiter:
+        auth_limiter:
+            policy: 'fixed_window'
+            limit: 5
+            interval: '1 minute'
+            storage: 'cache.app'
