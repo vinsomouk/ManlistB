@@ -67,12 +67,13 @@ class AuthController extends AbstractController
         ]);
     }
 
-    #[Route('/logout', name: 'api_logout', methods: ['POST'])]
-    public function logout(SessionInterface $session): JsonResponse
+   #[Route('/logout', name: 'api_logout', methods: ['POST'])]
+    public function logout(): JsonResponse
     {
-        $session->invalidate();
+        // On retourne simplement un succès, la déconnexion est gérée côté client
         return $this->json(['message' => 'Logged out successfully']);
     }
+
 
     #[Route('/check', name: 'auth_check', methods: ['GET'])]
     public function checkAuth(#[CurrentUser] ?User $user): JsonResponse

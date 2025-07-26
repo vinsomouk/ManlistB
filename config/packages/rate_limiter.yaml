@@ -5,4 +5,4 @@ framework:
             policy: 'fixed_window'
             limit: 5
             interval: '1 minute'
-            storage: 'cache.app'
+            cache_pool: 'cache.app'
