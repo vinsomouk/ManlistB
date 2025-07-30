@@ -18,8 +18,9 @@ class Watchlist
     #[ORM\JoinColumn(nullable: false)]
     private ?User $user = null;
 
-    #[ORM\Column]
-    private int $animeId;
+    #[ORM\ManyToOne(targetEntity: Anime::class)]
+    #[ORM\JoinColumn(nullable: false)]
+    private ?Anime $anime = null;
 
     #[ORM\Column(length: 20)]
     private string $status;
@@ -62,14 +63,14 @@ class Watchlist
         return $this;
     }
 
-    public function getAnimeId(): int
+    public function getAnime(): ?Anime
     {
-        return $this->animeId;
+        return $this->anime;
     }
 
-    public function setAnimeId(int $animeId): self
+    public function setAnime(?Anime $anime): self
     {
-        $this->animeId = $animeId;
+        $this->anime = $anime;
         return $this;
     }
 

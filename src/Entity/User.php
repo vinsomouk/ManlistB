@@ -3,11 +3,12 @@
 namespace App\Entity;
 
 use App\Repository\UserRepository;
+use Doctrine\Common\Collections\ArrayCollection;
+use Doctrine\Common\Collections\Collection;
+use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 use Symfony\Component\Security\Core\User\PasswordAuthenticatedUserInterface;
 use Symfony\Component\Security\Core\User\UserInterface;
-use Doctrine\Common\Collections\ArrayCollection;
-use Doctrine\Common\Collections\Collection;
 use Symfony\Component\Validator\Constraints as Assert;
 
 #[ORM\Entity(repositoryClass: UserRepository::class)]
@@ -59,13 +60,18 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     #[Assert\Url(message: "L'image de profil doit être une URL valide")]
     private ?string $profilePicture = null;
 
-    #[ORM\Column(type: 'datetime')]
-    private ?\DateTimeInterface $createdAt = null;
+    #[ORM\Column(type: Types::DATETIME_IMMUTABLE)]
+    private \DateTimeImmutable $createdAt;
 
-    #[ORM\Column(type: 'datetime')]
-    private ?\DateTimeInterface $updatedAt = null;
+    #[ORM\Column(type: Types::DATETIME_IMMUTABLE, nullable: true)]
+    private ?\DateTimeImmutable $updatedAt = null;
 
-    #[ORM\OneToMany(targetEntity: Watchlist::class, mappedBy: 'user', orphanRemoval: true)]
+    #[ORM\OneToMany(
+        targetEntity: Watchlist::class, 
+        mappedBy: 'user', 
+        orphanRemoval: true,
+        cascade: ['persist', 'remove']
+    )]
     private Collection $watchlists;
 
     #[ORM\Column(type: 'boolean')]
@@ -77,14 +83,14 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     public function __construct()
     {
         $this->watchlists = new ArrayCollection();
-        $this->createdAt = new \DateTime();
-        $this->updatedAt = new \DateTime();
+        $this->createdAt = new \DateTimeImmutable(); // DateTimeImmutable
     }
 
+    #[ORM\PrePersist]
     #[ORM\PreUpdate]
-    public function setUpdatedAtValue(): void
+    public function updateTimestamps(): void
     {
-        $this->updatedAt = new \DateTime();
+        $this->updatedAt = new \DateTimeImmutable(); // DateTimeImmutable
     }
 
     public function getId(): ?int
@@ -100,45 +106,27 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     public function setEmail(string $email): static
     {
         $this->email = $email;
-
         return $this;
     }
 
-    /**
-     * A visual identifier that represents this user.
-     *
-     * @see UserInterface
-     */
     public function getUserIdentifier(): string
     {
         return (string) $this->email;
     }
 
-    /**
-     * @see UserInterface
-     */
     public function getRoles(): array
     {
         $roles = $this->roles;
-        // guarantee every user at least has ROLE_USER
         $roles[] = 'ROLE_USER';
-
         return array_unique($roles);
     }
 
-    /**
-     * @param list<string> $roles
-     */
     public function setRoles(array $roles): static
     {
         $this->roles = $roles;
-
         return $this;
     }
 
-    /**
-     * @see PasswordAuthenticatedUserInterface
-     */
     public function getPassword(): string
     {
         return $this->password;
@@ -147,17 +135,12 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     public function setPassword(string $password): static
     {
         $this->password = $password;
-
         return $this;
     }
 
-    /**
-     * @see UserInterface
-     */
     public function eraseCredentials(): void
     {
-        // If you store any temporary, sensitive data on the user, clear it here
-        // $this->plainPassword = null;
+        // Clear temporary sensitive data
     }
 
     public function getNickname(): ?string
@@ -168,7 +151,6 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     public function setNickname(string $nickname): static
     {
         $this->nickname = $nickname;
-
         return $this;
     }
 
@@ -180,31 +162,28 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     public function setProfilePicture(?string $profilePicture): static
     {
         $this->profilePicture = $profilePicture;
-
         return $this;
     }
 
-    public function getCreatedAt(): ?\DateTimeInterface
+    public function getCreatedAt(): \DateTimeImmutable
     {
         return $this->createdAt;
     }
 
-    public function setCreatedAt(\DateTimeInterface $createdAt): static
+    public function setCreatedAt(\DateTimeImmutable $createdAt): static
     {
         $this->createdAt = $createdAt;
-
         return $this;
     }
 
-    public function getUpdatedAt(): ?\DateTimeInterface
+    public function getUpdatedAt(): ?\DateTimeImmutable
     {
         return $this->updatedAt;
     }
 
-    public function setUpdatedAt(\DateTimeInterface $updatedAt): static
+    public function setUpdatedAt(?\DateTimeImmutable $updatedAt): static
     {
         $this->updatedAt = $updatedAt;
-
         return $this;
     }
 
@@ -222,19 +201,16 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
             $this->watchlists->add($watchlist);
             $watchlist->setUser($this);
         }
-
         return $this;
     }
 
     public function removeWatchlist(Watchlist $watchlist): static
     {
         if ($this->watchlists->removeElement($watchlist)) {
-            // set the owning side to null (unless already changed)
             if ($watchlist->getUser() === $this) {
                 $watchlist->setUser(null);
             }
         }
-
         return $this;
     }
 
@@ -246,7 +222,6 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     public function setIsVerified(bool $isVerified): static
     {
         $this->isVerified = $isVerified;
-
         return $this;
     }
 
@@ -258,10 +233,10 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     public function setResetToken(?string $resetToken): static
     {
         $this->resetToken = $resetToken;
-
         return $this;
     }
 
+    // Sérialisation pour la session
     public function __serialize(): array
     {
         return [
@@ -276,5 +251,21 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
         $this->id = $data['id'];
         $this->email = $data['email'];
         $this->password = $data['password'];
+    }
+
+    // Méthode pour gérer les rôles admin
+    public function isAdmin(): bool
+    {
+        return in_array('ROLE_ADMIN', $this->getRoles());
+    }
+
+    public function setAdmin(bool $isAdmin): self
+    {
+        if ($isAdmin) {
+            $this->roles = array_unique(array_merge($this->roles, ['ROLE_ADMIN']));
+        } else {
+            $this->roles = array_diff($this->roles, ['ROLE_ADMIN']);
+        }
+        return $this;
     }
 }

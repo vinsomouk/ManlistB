@@ -1,10 +1,11 @@
 <?php
-// src/Controller/WatchlistController.php
 
 namespace App\Controller;
 
+use App\Entity\Anime;
 use App\Entity\Watchlist;
 use App\Entity\User;
+use App\Service\AnimeSyncer;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -14,27 +15,16 @@ use Symfony\Component\Routing\Annotation\Route;
 use Symfony\Component\Security\Http\Attribute\CurrentUser;
 use Symfony\Component\Validator\Constraints as Assert;
 use Symfony\Component\Validator\Validator\ValidatorInterface;
-use Symfony\Contracts\HttpClient\HttpClientInterface;
 
 #[Route('/api/watchlist')]
 class WatchlistController extends AbstractController
 {
-    private EntityManagerInterface $em;
-    private ValidatorInterface $validator;
-    private LoggerInterface $logger;
-    private HttpClientInterface $httpClient;
-
     public function __construct(
-        EntityManagerInterface $em, 
-        ValidatorInterface $validator,
-        LoggerInterface $logger,
-        HttpClientInterface $httpClient
-    ) {
-        $this->em = $em;
-        $this->validator = $validator;
-        $this->logger = $logger;
-        $this->httpClient = $httpClient;
-    }
+        private EntityManagerInterface $em,
+        private ValidatorInterface $validator,
+        private LoggerInterface $logger,
+        private AnimeSyncer $animeSyncer
+    ) {}
 
     #[Route('', name: 'watchlist_get', methods: ['GET'])]
     public function getWatchlist(#[CurrentUser] ?User $user): JsonResponse
@@ -44,68 +34,25 @@ class WatchlistController extends AbstractController
         }
 
         try {
-            $watchlist = $this->em->getRepository(Watchlist::class)->findBy(
+            $watchlistItems = $this->em->getRepository(Watchlist::class)->findBy(
                 ['user' => $user],
                 ['createdAt' => 'DESC']
             );
 
-            // Récupérer les IDs des animés
-            $animeIds = array_map(fn($item) => $item->getAnimeId(), $watchlist);
-
-            // Requête batch pour récupérer les infos des animés
-            $animeDetails = [];
-            if (!empty($animeIds)) {
-                try {
-                    $response = $this->httpClient->request('POST', 'https://graphql.anilist.co', [
-                        'json' => [
-                            'query' => '
-                                query ($ids: [Int]) {
-                                    Page {
-                                        media(id_in: $ids) {
-                                            id
-                                            title {
-                                                romaji
-                                            }
-                                            coverImage {
-                                                large
-                                            }
-                                        }
-                                    }
-                                }
-                            ',
-                            'variables' => ['ids' => array_values($animeIds)]
-                        ],
-                        'timeout' => 5
-                    ]);
-
-                    $content = $response->toArray();
-                    $animeDetails = array_reduce($content['data']['Page']['media'] ?? [], function($carry, $media) {
-                        $carry[$media['id']] = [
-                            'title' => $media['title']['romaji'] ?? null,
-                            'image' => $media['coverImage']['large'] ?? null
-                        ];
-                        return $carry;
-                    }, []);
-                } catch (\Exception $e) {
-                    $this->logger->error('AniList API error: ' . $e->getMessage());
-                }
-            }
-
-            // Construire la réponse
-            $data = array_map(function ($item) use ($animeDetails) {
-                $animeId = $item->getAnimeId();
+            $data = array_map(function (Watchlist $item) {
+                $anime = $item->getAnime();
                 return [
-                    'animeId' => $animeId,
+                    'animeId' => $anime->getId(),
                     'status' => $item->getStatus(),
                     'progress' => $item->getProgress(),
                     'score' => $item->getScore(),
                     'notes' => $item->getNotes(),
-                    'animeTitle' => $animeDetails[$animeId]['title'] ?? null,
-                    'animeImage' => $animeDetails[$animeId]['image'] ?? null,
+                    'animeTitle' => $anime->getTitle(),
+                    'animeImage' => $anime->getImageUrl(),
                     'createdAt' => $item->getCreatedAt()->format('Y-m-d H:i:s'),
                     'updatedAt' => $item->getUpdatedAt()?->format('Y-m-d H:i:s')
                 ];
-            }, $watchlist);
+            }, $watchlistItems);
 
             return $this->json(['data' => $data]);
 
@@ -120,79 +67,96 @@ class WatchlistController extends AbstractController
         #[CurrentUser] User $user,
         Request $request
     ): JsonResponse {
-        $data = json_decode($request->getContent(), true);
+        try {
+            $data = json_decode($request->getContent(), true);
 
-        // Validation des données
-        $constraints = new Assert\Collection([
-            'fields' => [
-                'animeId' => [
-                    new Assert\NotBlank(),
-                    new Assert\Type('numeric'),
-                    new Assert\Positive()
-                ],
-                'status' => [
-                    new Assert\NotBlank(),
-                    new Assert\Choice([
-                        'choices' => ['WATCHING', 'COMPLETED', 'ON_HOLD', 'DROPPED', 'PLANNED'],
-                        'message' => 'Invalid status'
-                    ])
-                ],
-                'progress' => [
-                    new Assert\Optional([
+            // Validation des données
+            $constraints = new Assert\Collection([
+                'fields' => [
+                    'animeId' => [
+                        new Assert\NotBlank(),
                         new Assert\Type('numeric'),
-                        new Assert\PositiveOrZero()
-                    ])
+                        new Assert\Positive()
+                    ],
+                    'status' => [
+                        new Assert\NotBlank(),
+                        new Assert\Choice([
+                            'choices' => ['WATCHING', 'COMPLETED', 'ON_HOLD', 'DROPPED', 'PLANNED'],
+                            'message' => 'Invalid status'
+                        ])
+                    ],
+                    'progress' => [
+                        new Assert\Optional([
+                            new Assert\Type('numeric'),
+                            new Assert\PositiveOrZero()
+                        ])
+                    ],
+                    'score' => [
+                        new Assert\Optional([
+                            new Assert\Type('numeric'),
+                            new Assert\Range(['min' => 0, 'max' => 100])
+                        ])
+                    ],
+                    'notes' => [
+                        new Assert\Optional([
+                            new Assert\Type('string'),
+                            new Assert\Length(['max' => 1000])
+                        ])
+                    ]
                 ],
-                'score' => [
-                    new Assert\Optional([
-                        new Assert\Type('numeric'),
-                        new Assert\Range(['min' => 0, 'max' => 100])
-                    ])
-                ],
-                'notes' => [
-                    new Assert\Optional([
-                        new Assert\Type('string'),
-                        new Assert\Length(['max' => 1000])
-                    ])
+                'allowExtraFields' => false
+            ]);
+
+            $errors = $this->validator->validate($data, $constraints);
+            if (count($errors) > 0) {
+                return $this->json(['errors' => (string) $errors], 400);
+            }
+
+            // Synchroniser/créer l'anime
+            $anime = $this->animeSyncer->sync($data['animeId']);
+
+            // Vérifier si l'anime est déjà dans la watchlist
+            $existingItem = $this->em->getRepository(Watchlist::class)->findOneBy([
+                'user' => $user,
+                'anime' => $anime
+            ]);
+
+            if ($existingItem) {
+                return $this->json(['error' => 'This anime is already in your watchlist'], 409);
+            }
+
+            // Créer un nouvel item
+            $item = new Watchlist();
+            $item->setUser($user)
+                ->setAnime($anime)
+                ->setStatus($data['status'])
+                ->setProgress($data['progress'] ?? 0)
+                ->setScore($data['score'] ?? null)
+                ->setNotes($data['notes'] ?? null);
+
+            $this->em->persist($item);
+            $this->em->flush();
+
+            return $this->json([
+                'success' => true,
+                'item' => [
+                    'animeId' => $item->getAnime()->getId(),
+                    'status' => $item->getStatus(),
+                    'progress' => $item->getProgress(),
+                    'score' => $item->getScore(),
+                    'notes' => $item->getNotes(),
+                    'animeTitle' => $anime->getTitle(),
+                    'animeImage' => $anime->getImageUrl(),
                 ]
-            ],
-            'allowExtraFields' => false
-        ]);
-
-        $errors = $this->validator->validate($data, $constraints);
-        if (count($errors) > 0) {
-            return $this->json(['errors' => (string) $errors], 400);
+            ], 201);
+            
+        } catch (\Exception $e) {
+            $this->logger->error('Add error: '.$e->getMessage());
+            return $this->json([
+                'error' => 'Server error',
+                'details' => $e->getMessage()
+            ], 500);
         }
-
-        // Vérifier si l'anime est déjà dans la watchlist
-        $existingItem = $this->em->getRepository(Watchlist::class)->findOneBy([
-            'user' => $user,
-            'animeId' => $data['animeId']
-        ]);
-
-        if ($existingItem) {
-            return $this->json(['error' => 'This anime is already in your watchlist'], 409);
-        }
-
-        // Créer un nouvel item
-        $item = new Watchlist();
-        $item->setUser($user)
-            ->setAnimeId($data['animeId'])
-            ->setStatus($data['status'])
-            ->setProgress($data['progress'] ?? 0)
-            ->setScore($data['score'] ?? null)
-            ->setNotes($data['notes'] ?? null);
-
-        $this->em->persist($item);
-        $this->em->flush();
-
-        return $this->json([
-            'animeId' => $item->getAnimeId(),
-            'status' => $item->getStatus(),
-            'progress' => $item->getProgress(),
-            'score' => $item->getScore(),
-            'notes' => $item->getNotes()
-        ], 201);
     }
 
     #[Route('/{animeId}', name: 'watchlist_update', methods: ['PUT'])]
@@ -201,78 +165,100 @@ class WatchlistController extends AbstractController
         int $animeId,
         Request $request
     ): JsonResponse {
-        $item = $this->em->getRepository(Watchlist::class)->findOneBy([
-            'user' => $user,
-            'animeId' => $animeId
-        ]);
+        try {
+            // S'assurer que l'anime existe
+            $anime = $this->em->getRepository(Anime::class)->find($animeId);
+            if (!$anime) {
+                $anime = $this->animeSyncer->sync($animeId);
+                $this->em->persist($anime);
+                $this->em->flush();
+            }
 
-        if (!$item) {
-            return $this->json(['error' => 'Watchlist item not found'], 404);
-        }
+            $item = $this->em->getRepository(Watchlist::class)->findOneBy([
+                'user' => $user,
+                'anime' => $anime
+            ]);
 
-        $data = json_decode($request->getContent(), true);
+            if (!$item) {
+                return $this->json(['error' => 'Watchlist item not found'], 404);
+            }
 
-        // Validation
-        $constraints = new Assert\Collection([
-            'fields' => [
-                'status' => [
-                    new Assert\Optional([
-                        new Assert\Choice([
-                            'choices' => ['WATCHING', 'COMPLETED', 'ON_HOLD', 'DROPPED', 'PLANNED']
+            $data = json_decode($request->getContent(), true);
+
+            // Validation
+            $constraints = new Assert\Collection([
+                'fields' => [
+                    'status' => [
+                        new Assert\Optional([
+                            new Assert\Choice([
+                                'choices' => ['WATCHING', 'COMPLETED', 'ON_HOLD', 'DROPPED', 'PLANNED']
+                            ])
                         ])
-                    ])
+                    ],
+                    'progress' => [
+                        new Assert\Optional([
+                            new Assert\Type('numeric'),
+                            new Assert\PositiveOrZero()
+                        ])
+                    ],
+                    'score' => [
+                        new Assert\Optional([
+                            new Assert\Type('numeric'),
+                            new Assert\Range(['min' => 0, 'max' => 100])
+                        ])
+                    ],
+                    'notes' => [
+                        new Assert\Optional([
+                            new Assert\Type('string'),
+                            new Assert\Length(['max' => 1000])
+                        ])
+                    ]
                 ],
-                'progress' => [
-                    new Assert\Optional([
-                        new Assert\Type('numeric'),
-                        new Assert\PositiveOrZero()
-                    ])
-                ],
-                'score' => [
-                    new Assert\Optional([
-                        new Assert\Type('numeric'),
-                        new Assert\Range(['min' => 0, 'max' => 100])
-                    ])
-                ],
-                'notes' => [
-                    new Assert\Optional([
-                        new Assert\Type('string'),
-                        new Assert\Length(['max' => 1000])
-                    ])
+                'allowExtraFields' => false
+            ]);
+
+            $errors = $this->validator->validate($data, $constraints);
+            if (count($errors) > 0) {
+                return $this->json(['errors' => (string) $errors], 400);
+            }
+
+            // Mise à jour
+            if (isset($data['status'])) {
+                $item->setStatus($data['status']);
+            }
+            if (isset($data['progress'])) {
+                $item->setProgress($data['progress']);
+            }
+            if (isset($data['score'])) {
+                $item->setScore($data['score']);
+            }
+            if (isset($data['notes'])) {
+                $item->setNotes($data['notes']);
+            }
+
+            $item->setUpdatedAt(new \DateTimeImmutable());
+            $this->em->flush();
+
+            return $this->json([
+                'success' => true,
+                'item' => [
+                    'animeId' => $item->getAnime()->getId(),
+                    'status' => $item->getStatus(),
+                    'progress' => $item->getProgress(),
+                    'score' => $item->getScore(),
+                    'notes' => $item->getNotes(),
+                    'animeTitle' => $anime->getTitle(),
+                    'animeImage' => $anime->getImageUrl(),
                 ]
-            ],
-            'allowExtraFields' => false
-        ]);
-
-        $errors = $this->validator->validate($data, $constraints);
-        if (count($errors) > 0) {
-            return $this->json(['errors' => (string) $errors], 400);
+            ]);
+            
+        } catch (\Exception $e) {
+            $this->logger->error('Update error: '.$e->getMessage());
+            return $this->json([
+                'error' => 'Server error',
+                'details' => $e->getMessage()
+            ], 500);
         }
-
-        // Mise à jour
-        if (isset($data['status'])) {
-            $item->setStatus($data['status']);
-        }
-        if (isset($data['progress'])) {
-            $item->setProgress($data['progress']);
-        }
-        if (isset($data['score'])) {
-            $item->setScore($data['score']);
-        }
-        if (isset($data['notes'])) {
-            $item->setNotes($data['notes']);
-        }
-
-        $item->setUpdatedAt(new \DateTimeImmutable());
-        $this->em->flush();
-
-        return $this->json([
-            'animeId' => $item->getAnimeId(),
-            'status' => $item->getStatus(),
-            'progress' => $item->getProgress(),
-            'score' => $item->getScore(),
-            'notes' => $item->getNotes()
-        ]);
     }
 
     #[Route('/{animeId}', name: 'watchlist_remove', methods: ['DELETE'])]
@@ -280,18 +266,27 @@ class WatchlistController extends AbstractController
         #[CurrentUser] User $user,
         int $animeId
     ): JsonResponse {
-        $item = $this->em->getRepository(Watchlist::class)->findOneBy([
-            'user' => $user,
-            'animeId' => $animeId
-        ]);
+        try {
+            $item = $this->em->getRepository(Watchlist::class)->findOneBy([
+                'user' => $user,
+                'anime' => $animeId
+            ]);
 
-        if (!$item) {
-            return $this->json(['error' => 'Watchlist item not found'], 404);
+            if (!$item) {
+                return $this->json(['error' => 'Watchlist item not found'], 404);
+            }
+
+            $this->em->remove($item);
+            $this->em->flush();
+
+            return $this->json(null, 204);
+            
+        } catch (\Exception $e) {
+            $this->logger->error('Remove error: '.$e->getMessage());
+            return $this->json([
+                'error' => 'Server error',
+                'details' => $e->getMessage()
+            ], 500);
         }
-
-        $this->em->remove($item);
-        $this->em->flush();
-
-        return $this->json(null, 204);
     }
 }
