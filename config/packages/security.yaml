@@ -1,3 +1,4 @@
+# config/packages/security.yaml
 security:
     password_hashers:
         App\Entity\User:
@@ -15,7 +16,7 @@ security:
             security: false
 
         main:
-            lazy: true
+            stateless: false
             provider: app_user_provider
             json_login:
                 check_path: /api/auth/login
@@ -27,6 +28,8 @@ security:
     access_control:
         - { path: ^/api/auth/register, roles: PUBLIC_ACCESS }
         - { path: ^/api/auth/login, roles: PUBLIC_ACCESS }
-        - { path: ^/api, roles: IS_AUTHENTICATED_FULLY }
         - { path: ^/api/watchlist, roles: IS_AUTHENTICATED_FULLY }
+        - { path: ^/api/questionnaires, roles: IS_AUTHENTICATED_FULLY }
         - { path: ^/api/auth/logout, roles: PUBLIC_ACCESS }
+        - { path: ^/api, roles: IS_AUTHENTICATED_FULLY }
+        

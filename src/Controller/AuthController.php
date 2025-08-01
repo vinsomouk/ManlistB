@@ -106,4 +106,6 @@ public function login(#[CurrentUser] ?User $user): JsonResponse
             'profilePicture' => $user->getProfilePicture()
         ]);
     }
+
+    
 }
