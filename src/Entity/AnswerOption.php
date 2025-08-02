@@ -49,7 +49,7 @@ class AnswerOption
         return $this;
     }
 
-    public function getTags(): array
+    public function getTags(): Collection
     {
         return $this->tags;
     }
@@ -57,6 +57,24 @@ class AnswerOption
     public function setTags(array $tags): self
     {
         $this->tags = $tags;
+        return $this;
+    }
+
+
+    public function addTag(Tag $tag): self
+    {
+        if (!$this->tags->contains($tag)) {
+            $this->tags[] = $tag;
+            $tag->addAnswerOption($this);
+        }
+        return $this;
+    }
+
+    public function removeTag(Tag $tag): self
+    {
+        if ($this->tags->removeElement($tag)) {
+            $tag->removeAnswerOption($this);
+        }
         return $this;
     }
 }

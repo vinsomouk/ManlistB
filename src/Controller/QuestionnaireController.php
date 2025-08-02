@@ -66,36 +66,50 @@ class QuestionnaireController extends AbstractController
     }
 
     #[Route('/{id}/submit', name: 'questionnaire_submit', methods: ['POST'])]
-    public function submit(
-        #[CurrentUser] $user,
-        Questionnaire $questionnaire,
-        Request $request,
-        EntityManagerInterface $em,
-        RecommendationService $recommendationService
-    ): JsonResponse {
-        $data = json_decode($request->getContent(), true);
+public function submit(
+    #[CurrentUser] $user,
+    Questionnaire $questionnaire,
+    Request $request,
+    EntityManagerInterface $em,
+    RecommendationService $recommendationService
+): JsonResponse {
+    $data = json_decode($request->getContent(), true);
+    
+    if (!isset($data['answers']) || !is_array($data['answers'])) {
+        return $this->json(['error' => 'Invalid response format'], 400);
+    }
+    
+    $userResponse = new UserResponse();
+    $userResponse->setUser($user);
+    $userResponse->setQuestionnaire($questionnaire);
+    $userResponse->setCompletedAt(new \DateTimeImmutable());
+    
+    foreach ($data['answers'] as $questionId => $answerId) {
+        $question = $em->getRepository(Question::class)->find($questionId);
+        $answer = $em->getRepository(AnswerOption::class)->find($answerId);
         
-        if (!isset($data['answers']) || !is_array($data['answers'])) {
-            return $this->json(['error' => 'Invalid response format'], 400);
+        if (!$question || !$answer) {
+            return $this->json(['error' => 'Invalid question or answer id'], 400);
         }
         
-        $userResponse = new UserResponse();
-        $userResponse->setUser($user);
-        $userResponse->setQuestionnaire($questionnaire);
-        $userResponse->setAnswers($data['answers']);
+        $responseItem = new ResponseItem();
+        $responseItem->setQuestion($question);
+        $responseItem->setAnswer($answer);
         
-        $em->persist($userResponse);
-        $em->flush();
-        
-        // Générer les recommandations
-        $recommendations = $recommendationService->generateRecommendations($userResponse);
-        
-        return $this->json([
-            'success' => true,
-            'recommendations' => $recommendations,
-            'responseId' => $userResponse->getId(),
-        ]);
+        $userResponse->addItem($responseItem);
     }
+    
+    $em->persist($userResponse);
+    $em->flush();
+    
+    $recommendations = $recommendationService->generateRecommendations($userResponse);
+    
+    return $this->json([
+        'success' => true,
+        'recommendations' => $recommendations,
+        'responseId' => $userResponse->getId(),
+    ]);
+}
 
     #[Route('/{id}/completed', name: 'questionnaire_completed', methods: ['GET'])]
 public function checkCompleted(

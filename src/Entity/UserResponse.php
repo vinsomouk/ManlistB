@@ -2,6 +2,8 @@
 
 namespace App\Entity;
 
+use Doctrine\Common\Collections\ArrayCollection;
+use Doctrine\Common\Collections\Collection;
 use Doctrine\ORM\Mapping as ORM;
 use Symfony\Component\Serializer\Annotation\Groups;
 
@@ -24,17 +26,22 @@ class UserResponse
     #[Groups(['user_response'])]
     private Questionnaire $questionnaire;
 
-    #[ORM\Column(type: 'json')]
-    #[Groups(['user_response'])]
-    private array $answers = [];
-
     #[ORM\Column(type: 'datetime_immutable')]
     #[Groups(['user_response'])]
     private \DateTimeImmutable $completedAt;
 
+    #[ORM\OneToMany(
+        targetEntity: ResponseItem::class, 
+        mappedBy: 'userResponse',
+        cascade: ['persist', 'remove'],
+        orphanRemoval: true
+    )]
+    private Collection $items;
+
     public function __construct()
     {
         $this->completedAt = new \DateTimeImmutable();
+        $this->items = new ArrayCollection();
     }
 
     // Getters et Setters
@@ -84,6 +91,30 @@ class UserResponse
     public function setCompletedAt(\DateTimeImmutable $completedAt): self
     {
         $this->completedAt = $completedAt;
+        return $this;
+    }
+
+    public function getItems(): Collection
+    {
+        return $this->items;
+    }
+
+    public function addItem(ResponseItem $item): self
+    {
+        if (!$this->items->contains($item)) {
+            $this->items[] = $item;
+            $item->setUserResponse($this);
+        }
+        return $this;
+    }
+
+    public function removeItem(ResponseItem $item): self
+    {
+        if ($this->items->removeElement($item)) {
+            if ($item->getUserResponse() === $this) {
+                $item->setUserResponse(null);
+            }
+        }
         return $this;
     }
 }

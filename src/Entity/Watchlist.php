@@ -14,8 +14,11 @@ class Watchlist
     #[ORM\Column]
     private ?int $id = null;
 
-    #[ORM\ManyToOne(targetEntity: User::class, inversedBy: 'watchlists')]
-    #[ORM\JoinColumn(nullable: false)]
+    #[ORM\ManyToOne(
+        targetEntity: User::class, 
+        inversedBy: 'watchlists'
+    )]
+    #[ORM\JoinColumn(nullable: false, onDelete: 'CASCADE')]
     private ?User $user = null;
 
     #[ORM\ManyToOne(targetEntity: Anime::class)]

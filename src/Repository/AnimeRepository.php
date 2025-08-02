@@ -33,4 +33,16 @@ class AnimeRepository extends ServiceEntityRepository
             $this->getEntityManager()->flush();
         }
     }
+
+    // Nouvelle méthode pour trouver les animés par tags
+    public function findByTags(array $tagIds): array
+    {
+        return $this->createQueryBuilder('a')
+            ->innerJoin('a.genres', 'g')
+            ->where('g.id IN (:tags)')
+            ->setParameter('tags', $tagIds)
+            ->setMaxResults(10)
+            ->getQuery()
+            ->getResult();
+    }
 }

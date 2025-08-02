@@ -3,6 +3,8 @@
 namespace App\Entity;
 
 use App\Repository\AnimeRepository;
+use Doctrine\Common\Collections\ArrayCollection;
+use Doctrine\Common\Collections\Collection;
 use Doctrine\ORM\Mapping as ORM;
 use Symfony\Component\Validator\Constraints as Assert;
 
@@ -28,11 +30,17 @@ class Anime
     #[ORM\Column(type: 'datetime_immutable')]
     private \DateTimeImmutable $lastSyncedAt;
 
+
+    #[ORM\ManyToMany(targetEntity: Genre::class)]
+    #[ORM\JoinTable(name: 'anime_genres')]
+    private Collection $genres;
+
     public function __construct(int $id)
     {
         $this->id = $id;
         $this->lastSyncedAt = new \DateTimeImmutable();
         $this->title = '';
+        $this->genres = new ArrayCollection();
     }
 
     public function getId(): int
@@ -98,5 +106,24 @@ class Anime
     public function isStale(): bool
     {
         return $this->lastSyncedAt->diff(new \DateTime())->days > 30;
+    }
+
+    public function getGenres(): Collection
+    {
+        return $this->genres;
+    }
+
+    public function addGenre(Genre $genre): self
+    {
+        if (!$this->genres->contains($genre)) {
+            $this->genres[] = $genre;
+        }
+        return $this;
+    }
+
+    public function removeGenre(Genre $genre): self
+    {
+        $this->genres->removeElement($genre);
+        return $this;
     }
 }
