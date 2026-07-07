@@ -28,7 +28,7 @@ class ProfileController extends AbstractController
         ]);
     }
 
-    #[Route('', name: 'profile_update', methods: ['PUT'])]
+    #[Route('', name: 'profile_update', methods: ['POST'])]
     public function updateProfile(
         #[CurrentUser] User $user,
         Request $request,
@@ -36,49 +36,63 @@ class ProfileController extends AbstractController
         EntityManagerInterface $em,
         ValidatorInterface $validator
     ): JsonResponse {
-        $data = json_decode($request->getContent(), true);
-        
-        // Vérifier si les données JSON sont valides
-        if ($data === null) {
-            return $this->json(['error' => 'Invalid JSON data'], 400);
-        }
-
         $errors = [];
-        $hasPasswordChange = false;
 
-        if (isset($data['email'])) {
-            $user->setEmail($data['email']);
+        $email = $request->request->get('email');
+        $nickname = $request->request->get('nickname');
+        $currentPassword = $request->request->get('currentPassword');
+        $newPassword = $request->request->get('newPassword');
+
+        if ($email) {
+            $user->setEmail($email);
             $emailErrors = $validator->validateProperty($user, 'email');
+
             if (count($emailErrors) > 0) {
                 $errors['email'] = $emailErrors[0]->getMessage();
             }
         }
 
-        if (isset($data['nickname'])) {
-            $user->setNickname($data['nickname']);
+        if ($nickname) {
+            $user->setNickname($nickname);
             $nicknameErrors = $validator->validateProperty($user, 'nickname');
+
             if (count($nicknameErrors) > 0) {
                 $errors['nickname'] = $nicknameErrors[0]->getMessage();
             }
         }
 
-        if (isset($data['profilePicture'])) {
-            $user->setProfilePicture($data['profilePicture']);
+        $file = $request->files->get('profilePicture');
+
+        if ($file) {
+            $allowedMimeTypes = ['image/jpeg', 'image/png', 'image/webp'];
+
+            if (!in_array($file->getMimeType(), $allowedMimeTypes, true)) {
+                $errors['profilePicture'] = 'Format image invalide';
+            } else {
+                $extension = $file->guessExtension() ?: 'jpg';
+                $newFilename = uniqid('avatar_', true) . '.' . $extension;
+
+                $uploadDir = $this->getParameter('uploads_directory');
+
+                if (!is_dir($uploadDir)) {
+                    mkdir($uploadDir, 0777, true);
+                }
+
+                $file->move($uploadDir, $newFilename);
+
+                $user->setProfilePicture('/uploads/profile/' . $newFilename);
+            }
         }
 
-        if (isset($data['newPassword'])) {
-            $hasPasswordChange = true;
-            
-            if (!isset($data['currentPassword'])) {
-                $errors['currentPassword'] = 'Current password is required';
-            } elseif (!$passwordHasher->isPasswordValid($user, $data['currentPassword'])) {
-                $errors['currentPassword'] = 'Current password is invalid';
+        if ($newPassword) {
+            if (!$currentPassword) {
+                $errors['currentPassword'] = 'Mot de passe actuel requis';
+            } elseif (!$passwordHasher->isPasswordValid($user, $currentPassword)) {
+                $errors['currentPassword'] = 'Mot de passe actuel incorrect';
             } else {
-                $user->setPassword($passwordHasher->hashPassword($user, $data['newPassword']));
-                $passwordErrors = $validator->validateProperty($user, 'password');
-                if (count($passwordErrors) > 0) {
-                    $errors['newPassword'] = $passwordErrors[0]->getMessage();
-                }
+                $user->setPassword(
+                    $passwordHasher->hashPassword($user, $newPassword)
+                );
             }
         }
 
@@ -88,7 +102,7 @@ class ProfileController extends AbstractController
 
         try {
             $em->flush();
-            
+
             return $this->json([
                 'message' => 'Profile updated successfully',
                 'user' => [
@@ -116,7 +130,7 @@ class ProfileController extends AbstractController
         try {
             $em->remove($user);
             $em->flush();
-            
+
             return $this->json(['message' => 'Account deleted successfully']);
         } catch (\Exception $e) {
             return $this->json([
