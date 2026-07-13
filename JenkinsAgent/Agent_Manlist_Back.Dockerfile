@@ -1,31 +1,38 @@
+FROM docker:27-cli AS docker-cli
+
 FROM jenkins/inbound-agent:latest-jdk21
 
 USER root
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-    docker.io \
-    git \
-    curl \
-    unzip \
-    jq \
-    postgresql-client \
-    php-cli \
-    php-curl \
-    php-intl \
-    php-mbstring \
-    php-pgsql \
-    php-xml \
-    php-zip \
-    php-xdebug && \
+        git \
+        curl \
+        unzip \
+        jq \
+        postgresql-client \
+        php-cli \
+        php-curl \
+        php-intl \
+        php-mbstring \
+        php-pgsql \
+        php-xml \
+        php-zip \
+        php-xdebug && \
     rm -rf /var/lib/apt/lists/*
 
-# Composer
+# Copier le client Docker officiel
+COPY --from=docker-cli /usr/local/bin/docker /usr/local/bin/docker
+
+# Installer Composer
 RUN curl -sS https://getcomposer.org/installer | php -- \
     --install-dir=/usr/local/bin \
     --filename=composer
 
-RUN usermod -aG docker jenkins
+# Vérifications pendant le build
+RUN docker --version && \
+    php --version && \
+    composer --version
 
 USER jenkins
 

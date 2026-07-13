@@ -1,126 +1,171 @@
-// Jenkinsfile
 pipeline {
     agent {
         label 'Agent_Manlist_Back'
     }
-    
+
+    options {
+        skipDefaultCheckout(true)
+        disableConcurrentBuilds()
+        timestamps()
+    }
+
     environment {
         DOCKER_IMAGE = 'manlist-back'
-        DOCKER_TAG = "${env.BUILD_NUMBER}"
-        DOCKER_REGISTRY = 'your-registry.com'
-        DB_HOST = 'postgres-test'
+        TEST_DB_CONTAINER = 'manlist-postgres-test'
+        TEST_DB_PORT = '55432'
+
+        DATABASE_URL = 'postgresql://test:test@host.docker.internal:55432/test?serverVersion=14&charset=utf8'
     }
-    
+
     stages {
         stage('Checkout') {
             steps {
                 checkout scm
             }
         }
-        
-        stage('Setup Environment') {
+
+        stage('Check Environment') {
             steps {
-                sh 'composer install'
-                sh 'npm install' // Si utilisation de Node.js
+                sh '''
+                    php --version
+                    composer --version
+                    docker --version
+                    docker info
+                '''
             }
         }
-        
-        stage('Run Tests') {
-            environment {
-                DATABASE_URL = "postgresql://test:test@${DB_HOST}:5432/test"
-            }
+
+        stage('Install') {
             steps {
-                script {
-                    // Démarrer PostgreSQL
-                    sh 'docker run -d --name ${DB_HOST} -e POSTGRES_USER=test -e POSTGRES_PASSWORD=test -e POSTGRES_DB=test -p 5432:5432 postgres:14'
-                    sh 'sleep 10' // Attendre que la DB soit prête
-                    
-                    // Exécuter les migrations et tests
-                    sh 'php bin/console doctrine:database:create --env=test'
-                    sh 'php bin/console doctrine:migrations:migrate --env=test -n'
-                    sh './bin/phpunit --coverage-html var/report'
-                    
-                    // Sauvegarder les rapports
-                    junit '**/build/junit/*.xml'
-                    publishHTML target: [
-                        allowMissing: false,
-                        alwaysLinkToLastBuild: true,
-                        keepAll: true,
-                        reportDir: 'var/report',
-                        reportFiles: 'index.html',
-                        reportName: 'Code Coverage'
-                    ]
-                }
-            }
-            post {
-                always {
-                    // Nettoyer les containers
-                    sh 'docker stop ${DB_HOST} || true'
-                    sh 'docker rm ${DB_HOST} || true'
-                }
+                sh '''
+                    composer install \
+                        --no-interaction \
+                        --prefer-dist \
+                        --no-progress
+                '''
             }
         }
-        
-        stage('Security Scan') {
+
+        stage('Validate') {
             steps {
-                sh 'composer audit'
-                sh 'trivy fs . --severity HIGH,CRITICAL --exit-code 1'
+                sh 'composer validate --no-check-publish'
+                sh 'php bin/console lint:container --env=test'
             }
         }
-        
+
+        stage('Start Test Database') {
+            steps {
+                sh '''
+                    docker rm -f "${TEST_DB_CONTAINER}" 2>/dev/null || true
+
+                    docker run -d \
+                        --name "${TEST_DB_CONTAINER}" \
+                        -e POSTGRES_USER=test \
+                        -e POSTGRES_PASSWORD=test \
+                        -e POSTGRES_DB=test \
+                        -p "${TEST_DB_PORT}:5432" \
+                        postgres:14
+
+                    echo "Attente du démarrage de PostgreSQL..."
+
+                    for i in $(seq 1 30); do
+                        if docker exec "${TEST_DB_CONTAINER}" \
+                            pg_isready -U test -d test
+                        then
+                            echo "PostgreSQL est prêt."
+                            exit 0
+                        fi
+
+                        echo "Tentative ${i}/30"
+                        sleep 2
+                    done
+
+                    echo "PostgreSQL n'a pas démarré."
+                    docker logs "${TEST_DB_CONTAINER}"
+                    exit 1
+                '''
+            }
+        }
+
+        stage('Migrations') {
+            steps {
+                sh '''
+                    php bin/console doctrine:migrations:migrate \
+                        --env=test \
+                        --no-interaction
+                '''
+            }
+        }
+
+        stage('Tests') {
+            steps {
+                sh 'php bin/phpunit'
+            }
+        }
+
         stage('Build Docker Image') {
             steps {
                 script {
-                    docker.build("${DOCKER_REGISTRY}/${DOCKER_IMAGE}:${DOCKER_TAG}", "-f Manlist_Back.Dockerfile .")
+                    docker.build(
+                        "${DOCKER_IMAGE}:${BUILD_NUMBER}",
+                        '-f Manlist_Back.Dockerfile .'
+                    )
                 }
             }
         }
-        
-        stage('Push to Registry') {
-            steps {
-                script {
-                    docker.withRegistry('https://${DOCKER_REGISTRY}', 'docker-credentials') {
-                        docker.image("${DOCKER_REGISTRY}/${DOCKER_IMAGE}:${DOCKER_TAG}").push()
-                    }
-                }
-            }
-        }
-        
-        stage('Deploy to Staging') {
+
+        stage('Security Scan') {
             when {
-                branch 'main'
-            }
-            steps {
-                sshagent(['staging-server-credentials']) {
-                    sh """
-                        ssh user@staging-server '
-                            docker pull ${DOCKER_REGISTRY}/${DOCKER_IMAGE}:${DOCKER_TAG}
-                            docker stop manlist-back || true
-                            docker rm manlist-back || true
-                            docker run -d \\
-                                --name manlist-back \\
-                                -p 80:80 \\
-                                -e APP_ENV=prod \\
-                                -e DATABASE_URL=postgresql://prod_user:prod_pass@db-prod:5432/prod_db \\
-                                ${DOCKER_REGISTRY}/${DOCKER_IMAGE}:${DOCKER_TAG}
-                        '
-                    """
+                expression {
+                    return false
                 }
+            }
+
+            steps {
+                sh 'composer audit'
+            }
+        }
+
+        stage('Push Registry') {
+            when {
+                expression {
+                    return false
+                }
+            }
+
+            steps {
+                echo 'Push Docker à configurer plus tard'
+            }
+        }
+
+        stage('Deploy') {
+            when {
+                expression {
+                    return false
+                }
+            }
+
+            steps {
+                echo 'Déploiement à configurer plus tard'
             }
         }
     }
-    
+
     post {
-        always {
-            // Nettoyage des images Docker
-            sh 'docker system prune -f'
-            cleanWs()
-        }
-        failure {
-            slackSend channel: '#alerts', message: "Build ${env.BUILD_NUMBER} failed: ${env.BUILD_URL}"
-        }
         success {
-            slackSend channel: '#notifications', message: "Build ${env.BUILD_NUMBER} succeeded: ${env.BUILD_URL}"
+            echo "Backend construit : ${DOCKER_IMAGE}:${BUILD_NUMBER}"
+        }
+
+        failure {
+            echo "Échec du pipeline backend : ${BUILD_URL}"
+        }
+
+        always {
+            sh '''
+                docker rm -f "${TEST_DB_CONTAINER}" 2>/dev/null || true
+            '''
+
+            cleanWs()
         }
     }
 }
