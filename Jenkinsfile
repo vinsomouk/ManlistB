@@ -10,12 +10,12 @@ pipeline {
     }
 
     environment {
-        DOCKER_IMAGE = 'manlist-back'
-        TEST_DB_CONTAINER = 'manlist-postgres-test'
-        TEST_DB_PORT = '55432'
+    DOCKER_IMAGE = 'manlist-back'
+    TEST_DB_CONTAINER = 'manlist-postgres-test'
+    TEST_DB_PORT = '55432'
 
-        DATABASE_URL = 'postgresql://test:test@host.docker.internal:55432/test?serverVersion=14&charset=utf8'
-    }
+    DATABASE_URL = 'postgresql://test:test@host.docker.internal:55432/manlist?serverVersion=14&charset=utf8'
+}
 
     stages {
         stage('Checkout') {
@@ -53,39 +53,37 @@ pipeline {
             }
         }
 
-        stage('Start Test Database') {
-            steps {
-                sh '''
-                    docker rm -f "${TEST_DB_CONTAINER}" 2>/dev/null || true
+       stage('Start Test Database') {
+    steps {
+        sh '''
+            docker rm -f "${TEST_DB_CONTAINER}" 2>/dev/null || true
 
-                    docker run -d \
-                        --name "${TEST_DB_CONTAINER}" \
-                        -e POSTGRES_USER=test \
-                        -e POSTGRES_PASSWORD=test \
-                        -e POSTGRES_DB=test \
-                        -p "${TEST_DB_PORT}:5432" \
-                        postgres:14
+            docker run -d \
+    --name "${TEST_DB_CONTAINER}" \
+    -e POSTGRES_USER=test \
+    -e POSTGRES_PASSWORD=test \
+    -e POSTGRES_DB=manlist_test \
+    -p "${TEST_DB_PORT}:5432" \
+    postgres:14
 
-                    echo "Attente du démarrage de PostgreSQL..."
+            echo "Attente du démarrage de PostgreSQL..."
 
-                    for i in $(seq 1 30); do
-                        if docker exec "${TEST_DB_CONTAINER}" \
-                            pg_isready -U test -d test
-                        then
-                            echo "PostgreSQL est prêt."
-                            exit 0
-                        fi
+            for i in $(seq 1 30); do
+                if docker exec "${TEST_DB_CONTAINER}" \
+                    pg_isready -U test -d manlist_test
+                then
+                    echo "PostgreSQL est prêt."
+                    exit 0
+                fi
 
-                        echo "Tentative ${i}/30"
-                        sleep 2
-                    done
+                sleep 2
+            done
 
-                    echo "PostgreSQL n'a pas démarré."
-                    docker logs "${TEST_DB_CONTAINER}"
-                    exit 1
-                '''
-            }
-        }
+            docker logs "${TEST_DB_CONTAINER}"
+            exit 1
+        '''
+    }
+}
 
         stage('Migrations') {
             steps {
