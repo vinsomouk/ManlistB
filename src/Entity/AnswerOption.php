@@ -15,7 +15,10 @@ class AnswerOption
     #[ORM\Column(type: 'text')]
     private string $text;
 
-    #[ORM\ManyToOne(targetEntity: Question::class, inversedBy: 'answerOptions')]
+    #[ORM\ManyToOne(
+        targetEntity: Question::class,
+        inversedBy: 'answerOptions'
+    )]
     #[ORM\JoinColumn(nullable: false)]
     private Question $question;
 
@@ -35,6 +38,7 @@ class AnswerOption
     public function setText(string $text): self
     {
         $this->text = $text;
+
         return $this;
     }
 
@@ -46,35 +50,43 @@ class AnswerOption
     public function setQuestion(Question $question): self
     {
         $this->question = $question;
+
         return $this;
     }
 
-    public function getTags(): Collection
+    public function getTags(): array
     {
         return $this->tags;
     }
 
     public function setTags(array $tags): self
     {
-        $this->tags = $tags;
+        $this->tags = array_values(
+            array_unique($tags)
+        );
+
         return $this;
     }
 
-
-    public function addTag(Tag $tag): self
+    public function addTag(string $tag): self
     {
-        if (!$this->tags->contains($tag)) {
+        if (!in_array($tag, $this->tags, true)) {
             $this->tags[] = $tag;
-            $tag->addAnswerOption($this);
         }
+
         return $this;
     }
 
-    public function removeTag(Tag $tag): self
+    public function removeTag(string $tag): self
     {
-        if ($this->tags->removeElement($tag)) {
-            $tag->removeAnswerOption($this);
-        }
+        $this->tags = array_values(
+            array_filter(
+                $this->tags,
+                static fn (string $existingTag): bool =>
+                    $existingTag !== $tag
+            )
+        );
+
         return $this;
     }
 }

@@ -3,57 +3,151 @@
 namespace App\Tests\Unit\Service;
 
 use App\Entity\Anime;
+use App\Repository\AnimeRepository;
 use App\Service\AnimeSyncer;
+use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\TestCase;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 use Symfony\Contracts\HttpClient\ResponseInterface;
-use Doctrine\ORM\EntityManagerInterface;
 
 class AnimeSyncerTest extends TestCase
 {
-    public function testSyncNewAnime()
+    public function testSyncNewAnime(): void
     {
-        // Mock HTTP response
-        $mockResponse = $this->createMock(ResponseInterface::class);
-        $mockResponse->method('toArray')
+        $mockResponse = $this->createMock(
+            ResponseInterface::class
+        );
+
+        $mockResponse
+            ->expects(self::once())
+            ->method('getStatusCode')
+            ->willReturn(200);
+
+        $mockResponse
+            ->expects(self::once())
+            ->method('toArray')
             ->willReturn([
                 'data' => [
                     'Media' => [
-                        'title' => ['romaji' => 'Test Anime'],
-                        'coverImage' => ['large' => 'image.jpg'],
+                        'id' => 999,
+                        'title' => [
+                            'romaji' => 'Test Anime',
+                            'english' => null,
+                            'native' => null,
+                        ],
+                        'coverImage' => [
+                            'large' => 'image.jpg',
+                        ],
                         'description' => 'Test description',
                         'episodes' => 12,
-                        'status' => 'FINISHED'
-                    ]
-                ]
+                        'averageScore' => 85,
+                        'duration' => 24,
+                        'status' => 'FINISHED',
+                        'format' => 'TV',
+                        'bannerImage' => 'banner.jpg',
+                        'genres' => [
+                            'Action',
+                        ],
+                        'isAdult' => false,
+                    ],
+                ],
             ]);
 
-        // Mock HTTP client
-        $mockHttp = $this->createMock(HttpClientInterface::class);
-        $mockHttp->method('request')
+        $mockHttpClient = $this->createMock(
+            HttpClientInterface::class
+        );
+
+        $mockHttpClient
+            ->expects(self::once())
+            ->method('request')
+            ->with(
+                'POST',
+                'https://graphql.anilist.co',
+                self::callback(
+                    static function (array $options): bool {
+                        return isset(
+                            $options['json']['variables']['id']
+                        )
+                            && $options['json']['variables']['id']
+                                === 999;
+                    }
+                )
+            )
             ->willReturn($mockResponse);
 
-        // Mock EntityManager
-        $mockEm = $this->createMock(EntityManagerInterface::class);
-        $mockEm->expects($this->once())
+        $mockRepository = $this->createMock(
+            AnimeRepository::class
+        );
+
+        $mockRepository
+            ->expects(self::once())
+            ->method('find')
+            ->with(999)
+            ->willReturn(null);
+
+        $mockEntityManager = $this->createMock(
+            EntityManagerInterface::class
+        );
+
+        $mockEntityManager
+            ->expects(self::once())
+            ->method('getRepository')
+            ->with(Anime::class)
+            ->willReturn($mockRepository);
+
+        $mockEntityManager
+            ->expects(self::once())
             ->method('persist')
-            ->with($this->callback(function($anime) {
-                return $anime instanceof Anime && 
-                       $anime->getTitle() === 'Test Anime';
-            }));
-        $mockEm->expects($this->once())
+            ->with(
+                self::callback(
+                    static function (Anime $anime): bool {
+                        return $anime->getId() === 999
+                            && $anime->getTitle()
+                                === 'Test Anime'
+                            && $anime->getDescription()
+                                === 'Test description'
+                            && $anime->getEpisodes() === 12
+                            && $anime->getStatus()
+                                === 'FINISHED';
+                    }
+                )
+            );
+
+        $mockEntityManager
+            ->expects(self::once())
             ->method('flush');
 
-        // Test the syncer
-        $syncer = new AnimeSyncer($mockHttp, $mockEm);
+        $syncer = new AnimeSyncer(
+            $mockHttpClient,
+            $mockEntityManager
+        );
+
         $anime = $syncer->sync(999);
 
-        // Assertions
-        $this->assertInstanceOf(Anime::class, $anime);
-        $this->assertEquals('Test Anime', $anime->getTitle());
-        $this->assertEquals('image.jpg', $anime->getImageUrl());
-        $this->assertEquals('Test description', $anime->getDescription());
-        $this->assertEquals(12, $anime->getEpisodes());
-        $this->assertEquals('FINISHED', $anime->getStatus());
+        self::assertSame(999, $anime->getId());
+        self::assertSame(
+            'Test Anime',
+            $anime->getTitle()
+        );
+        self::assertSame(
+            'image.jpg',
+            $anime->getImageUrl()
+        );
+        self::assertSame(
+            'Test description',
+            $anime->getDescription()
+        );
+        self::assertSame(12, $anime->getEpisodes());
+        self::assertSame(
+            'FINISHED',
+            $anime->getStatus()
+        );
+        self::assertSame(85, $anime->getAverageScore());
+        self::assertSame(24, $anime->getDuration());
+        self::assertSame('TV', $anime->getFormat());
+        self::assertSame(
+            'banner.jpg',
+            $anime->getBannerImage()
+        );
     }
 }

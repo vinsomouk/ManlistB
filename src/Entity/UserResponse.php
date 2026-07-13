@@ -72,16 +72,7 @@ class UserResponse
         return $this;
     }
 
-    public function getAnswers(): array
-    {
-        return $this->answers;
-    }
 
-    public function setAnswers(array $answers): self
-    {
-        $this->answers = $answers;
-        return $this;
-    }
 
     public function getCompletedAt(): \DateTimeImmutable
     {

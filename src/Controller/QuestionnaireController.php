@@ -2,7 +2,11 @@
 
 namespace App\Controller;
 
+use App\Entity\Question;
+use App\Entity\ResponseItem;
+use App\Entity\AnswerOption;
 use App\Entity\Questionnaire;
+use App\Entity\User;
 use App\Repository\QuestionnaireRepository;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;

@@ -5,6 +5,7 @@ namespace App\Service;
 use App\Entity\Anime;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
+use Symfony\Contracts\HttpClient\ResponseInterface;
 
 class AnimeSyncer
 {
@@ -14,43 +15,68 @@ class AnimeSyncer
 
     public function __construct(
         private HttpClientInterface $httpClient,
-        private EntityManagerInterface $em
-    ) {}
+        private EntityManagerInterface $entityManager
+    ) {
+    }
 
     public function sync(int $animeId): Anime
     {
-        $anime = $this->em->getRepository(Anime::class)->find($animeId);
+        $anime = $this->entityManager
+            ->getRepository(Anime::class)
+            ->find($animeId);
 
-    if (!$anime) {
-        $anime = new Anime($animeId);
-        $this->em->persist($anime);
-    }
+        $isNewAnime = $anime === null;
 
-        // Synchroniser seulement si nécessaire
-        if (!$anime->getTitle() || $anime->isStale()) {
+        if ($isNewAnime) {
+            $anime = new Anime($animeId);
+        }
+
+        if (
+            $isNewAnime
+            || $anime->getTitle() === ''
+            || $anime->isStale()
+        ) {
             $data = $this->fetchAnimeData($animeId);
+
             $this->updateAnimeFromData($anime, $data);
-            $anime->setLastSyncedAt(new \DateTimeImmutable());
-            $this->em->flush();
+
+            $anime->setLastSyncedAt(
+                new \DateTimeImmutable()
+            );
+
+            if ($isNewAnime) {
+                $this->entityManager->persist($anime);
+            }
+
+            $this->entityManager->flush();
         }
 
         return $anime;
     }
 
+    /**
+     * @return array<string, mixed>
+     */
     private function fetchAnimeData(int $id): array
     {
-        $query = <<<GRAPHQL
-            query (\$id: Int) {
-                Media(id: \$id, type: ANIME) {
+        $query = <<<'GRAPHQL'
+            query ($id: Int) {
+                Media(id: $id, type: ANIME) {
                     id
+
                     title {
                         romaji
                         english
                         native
                     }
+
+                    description
+
                     coverImage {
                         large
                     }
+
+                    bannerImage
                     episodes
                     averageScore
                     genres
@@ -58,42 +84,153 @@ class AnimeSyncer
                     format
                     duration
                     status
-                    bannerImage
                 }
             }
         GRAPHQL;
 
-        $retryCount = 0;
-        while ($retryCount <= self::MAX_RETRIES) {
+        $lastError = null;
+
+        for (
+            $attempt = 0;
+            $attempt <= self::MAX_RETRIES;
+            $attempt++
+        ) {
             try {
-                $response = $this->httpClient->request('POST', self::ANILIST_API_URL, [
-                    'json' => [
-                        'query' => $query,
-                        'variables' => ['id' => $id]
-                    ],
-                    'timeout' => self::REQUEST_TIMEOUT
-                ]);
+                $response = $this->httpClient->request(
+                    'POST',
+                    self::ANILIST_API_URL,
+                    [
+                        'json' => [
+                            'query' => $query,
+                            'variables' => [
+                                'id' => $id,
+                            ],
+                        ],
+                        'timeout' => self::REQUEST_TIMEOUT,
+                    ]
+                );
 
-                if ($response->getStatusCode() === 200) {
-                    $data = $response->toArray();
-                    return $data['data']['Media'] ?? [];
+                return $this->extractAnimeData($response);
+            } catch (\Throwable $exception) {
+                $lastError = $exception;
+
+                if ($attempt < self::MAX_RETRIES) {
+                    sleep(1);
                 }
-            } catch (\Exception $e) {
-                // Log error or handle it
             }
-
-            $retryCount++;
-            sleep(1); // Wait before retrying
         }
 
-        throw new \RuntimeException('Failed to fetch anime data after retries');
+        throw new \RuntimeException(
+            'Failed to fetch anime data after retries',
+            previous: $lastError
+        );
     }
 
-    private function updateAnimeFromData(Anime $anime, array $data): void
-    {
-        $anime->setTitle($data['title']['romaji'] ?? $data['title']['english'] ?? 'Unknown Title');
-        $anime->setImageUrl($data['coverImage']['large'] ?? null);
-        $anime->setEpisodeCount($data['episodes'] ?? null);
-        $anime->setRawData($data);
+    /**
+     * @return array<string, mixed>
+     */
+    private function extractAnimeData(
+        ResponseInterface $response
+    ): array {
+        if ($response->getStatusCode() !== 200) {
+            throw new \RuntimeException(
+                sprintf(
+                    'AniList returned HTTP status %d',
+                    $response->getStatusCode()
+                )
+            );
+        }
+
+        $responseData = $response->toArray();
+
+        if (!empty($responseData['errors'])) {
+            $messages = array_map(
+                static fn (array $error): string =>
+                    $error['message'] ?? 'Unknown AniList error',
+                $responseData['errors']
+            );
+
+            throw new \RuntimeException(
+                implode(', ', $messages)
+            );
+        }
+
+        $animeData = $responseData['data']['Media'] ?? null;
+
+        if (!is_array($animeData)) {
+            throw new \RuntimeException(
+                'Anime data was not found in AniList response'
+            );
+        }
+
+        return $animeData;
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     */
+    private function updateAnimeFromData(
+        Anime $anime,
+        array $data
+    ): void {
+        $titleData = is_array($data['title'] ?? null)
+            ? $data['title']
+            : [];
+
+        $coverImageData = is_array(
+            $data['coverImage'] ?? null
+        )
+            ? $data['coverImage']
+            : [];
+
+        $title =
+            $titleData['romaji']
+            ?? $titleData['english']
+            ?? $titleData['native']
+            ?? 'Unknown Title';
+
+        $anime
+            ->setTitle((string) $title)
+            ->setImageUrl(
+                isset($coverImageData['large'])
+                    ? (string) $coverImageData['large']
+                    : null
+            )
+            ->setDescription(
+                isset($data['description'])
+                    ? (string) $data['description']
+                    : null
+            )
+            ->setEpisodeCount(
+                isset($data['episodes'])
+                    ? (int) $data['episodes']
+                    : null
+            )
+            ->setAverageScore(
+                isset($data['averageScore'])
+                    ? (int) $data['averageScore']
+                    : null
+            )
+            ->setDuration(
+                isset($data['duration'])
+                    ? (int) $data['duration']
+                    : null
+            )
+            ->setStatus(
+                isset($data['status'])
+                    ? (string) $data['status']
+                    : null
+            )
+            ->setFormat(
+                isset($data['format'])
+                    ? (string) $data['format']
+                    : null
+            )
+            ->setBannerImage(
+                isset($data['bannerImage'])
+                    ? (string) $data['bannerImage']
+                    : null
+            )
+            ->setRawData($data);
     }
 }

@@ -17,8 +17,8 @@ class Question
     #[ORM\Column(type: 'text')]
     private string $text;
 
-    #[ORM\Column(type: 'integer')]
-    private int $order = 0;
+    #[ORM\Column(name: 'display_order', type: 'integer')]
+private int $order = 0;
 
     #[ORM\ManyToOne(targetEntity: Questionnaire::class, inversedBy: 'questions')]
     #[ORM\JoinColumn(nullable: false)]

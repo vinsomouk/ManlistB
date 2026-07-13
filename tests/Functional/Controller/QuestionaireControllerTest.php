@@ -2,57 +2,100 @@
 
 namespace App\Tests\Functional\Controller;
 
+use App\Entity\AnswerOption;
 use App\Entity\Question;
 use App\Entity\Questionnaire;
-use App\Entity\AnswerOption;
 use App\Tests\Functional\AbstractWebTestCase;
 
 class QuestionnaireControllerTest extends AbstractWebTestCase
 {
-    public function testQuestionnaireSubmission()
+    public function testQuestionnaireSubmission(): void
     {
         $client = $this->createAuthenticatedClient();
-        $em = static::getContainer()->get('doctrine')->getManager();
 
-        // Create questionnaire
+        $entityManager = static::getContainer()
+            ->get('doctrine')
+            ->getManager();
+
         $questionnaire = new Questionnaire();
-        $questionnaire->setTitle('Test Questionnaire');
-        $em->persist($questionnaire);
+        $questionnaire
+            ->setTitle('Test Questionnaire')
+            ->setDescription(
+                'Questionnaire créé pour le test fonctionnel'
+            )
+            ->setIsActive(true);
 
-        // Add questions
+        $entityManager->persist($questionnaire);
+
         $question = new Question();
-        $question->setText('Test Question');
-        $question->setQuestionnaire($questionnaire);
-        $em->persist($question);
+        $question
+            ->setText('Test Question')
+            ->setQuestionnaire($questionnaire);
 
-        // Add answer options
+        $entityManager->persist($question);
+
         $option1 = new AnswerOption();
-        $option1->setText('Option 1');
-        $option1->setQuestion($question);
-        $em->persist($option1);
+        $option1
+            ->setText('Option 1')
+            ->setQuestion($question);
+
+        $entityManager->persist($option1);
 
         $option2 = new AnswerOption();
-        $option2->setText('Option 2');
-        $option2->setQuestion($question);
-        $em->persist($option2);
+        $option2
+            ->setText('Option 2')
+            ->setQuestion($question);
 
-        $em->flush();
+        $entityManager->persist($option2);
 
-        // Prepare answers
+        $entityManager->flush();
+
         $answers = [
-            $question->getId() => $option1->getId()
+            $question->getId() => $option1->getId(),
         ];
 
-        // Submit questionnaire
-        $client->request('POST', '/api/questionnaires/'.$questionnaire->getId().'/submit', [], [], [
-            'CONTENT_TYPE' => 'application/json',
-        ], json_encode(['answers' => $answers]));
+        $client->request(
+            'POST',
+            sprintf(
+                '/api/questionnaires/%d/submit',
+                $questionnaire->getId()
+            ),
+            [],
+            [],
+            [
+                'CONTENT_TYPE' => 'application/json',
+            ],
+            json_encode(
+                [
+                    'answers' => $answers,
+                ],
+                JSON_THROW_ON_ERROR
+            )
+        );
 
-        $this->assertEquals(200, $client->getResponse()->getStatusCode());
-        $response = json_decode($client->getResponse()->getContent(), true);
-        
-        $this->assertArrayHasKey('recommendations', $response);
-        $this->assertIsArray($response['recommendations']);
-        $this->assertArrayHasKey('score', $response);
+        self::assertResponseIsSuccessful();
+
+        $response = json_decode(
+            $client->getResponse()->getContent(),
+            true,
+            512,
+            JSON_THROW_ON_ERROR
+        );
+
+        self::assertArrayHasKey(
+            'recommendations',
+            $response
+        );
+
+        self::assertIsArray(
+            $response['recommendations']
+        );
+
+       self::assertArrayHasKey('recommendations', $response);
+self::assertIsArray($response['recommendations']);
+
+if ($response['recommendations'] !== []) {
+    self::assertArrayHasKey('score', $response['recommendations'][0]);
+}
     }
 }

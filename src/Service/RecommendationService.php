@@ -29,22 +29,24 @@ class RecommendationService
     }
     
     private function getSelectedTags(UserResponse $response): array
-    {
-        $tags = [];
-        $answers = $response->getAnswers();
-        
-        foreach ($answers as $answer) {
-            if (isset($answer['optionId'])) {
-                $option = $this->em->getRepository(AnswerOption::class)->find($answer['optionId']);
-                if ($option) {
-                    $tags = array_merge($tags, $option->getTags());
-                }
-            }
+{
+    $tags = [];
+
+    foreach ($response->getItems() as $item) {
+
+        $answer = $item->getAnswer();
+
+        if ($answer) {
+            $tags = array_merge(
+                $tags,
+                $answer->getTags()
+            );
         }
-        
-        return array_unique($tags);
     }
-    
+
+    return array_values(array_unique($tags));
+}
+
     private function findMatchingAnimes(array $tags): array
 {
     if (empty($tags)) {

@@ -6,47 +6,127 @@ use App\Tests\Functional\AbstractWebTestCase;
 
 class WatchlistControllerTest extends AbstractWebTestCase
 {
-    public function testWatchlistLifecycle()
+    public function testWatchlistLifecycle(): void
     {
         $client = $this->createAuthenticatedClient();
-        $animeId = mt_rand(1000, 10000);
 
-        // Test adding to watchlist
-        $client->request('POST', '/api/watchlist', [], [], [
-            'CONTENT_TYPE' => 'application/json',
-        ], json_encode([
-            'animeId' => $animeId,
-            'status' => 'WATCHING'
-        ]));
-        $this->assertEquals(201, $client->getResponse()->getStatusCode());
-        $addResponse = json_decode($client->getResponse()->getContent(), true);
-        $this->assertArrayHasKey('id', $addResponse);
+        // Identifiant AniList valide.
+        $animeId = 1;
 
-        // Test updating watchlist item
-        $client->request('PUT', '/api/watchlist/'.$animeId, [], [], [
-            'CONTENT_TYPE' => 'application/json',
-        ], json_encode([
-            'status' => 'COMPLETED',
-            'score' => 85
-        ]));
-        $this->assertEquals(200, $client->getResponse()->getStatusCode());
-        $updateResponse = json_decode($client->getResponse()->getContent(), true);
-        $this->assertEquals('COMPLETED', $updateResponse['status']);
+        $client->request(
+            'POST',
+            '/api/watchlist',
+            [],
+            [],
+            [
+                'CONTENT_TYPE' => 'application/json',
+            ],
+            json_encode(
+                [
+                    'animeId' => $animeId,
+                    'status' => 'WATCHING',
+                ],
+                JSON_THROW_ON_ERROR
+            )
+        );
 
-        // Test getting watchlist
+        self::assertResponseStatusCodeSame(201);
+
+        $addResponse = json_decode(
+            $client->getResponse()->getContent(),
+            true,
+            512,
+            JSON_THROW_ON_ERROR
+        );
+
+        self::assertTrue($addResponse['success']);
+        self::assertArrayHasKey('item', $addResponse);
+        self::assertSame(
+            $animeId,
+            $addResponse['item']['animeId']
+        );
+        self::assertSame(
+            'WATCHING',
+            $addResponse['item']['status']
+        );
+
+        $client->request(
+            'PUT',
+            sprintf('/api/watchlist/%d', $animeId),
+            [],
+            [],
+            [
+                'CONTENT_TYPE' => 'application/json',
+            ],
+            json_encode(
+                [
+                    'status' => 'COMPLETED',
+                    'score' => 85,
+                ],
+                JSON_THROW_ON_ERROR
+            )
+        );
+
+        self::assertResponseIsSuccessful();
+
+        $updateResponse = json_decode(
+            $client->getResponse()->getContent(),
+            true,
+            512,
+            JSON_THROW_ON_ERROR
+        );
+
+        self::assertTrue($updateResponse['success']);
+        self::assertArrayHasKey(
+            'item',
+            $updateResponse
+        );
+        self::assertSame(
+            'COMPLETED',
+            $updateResponse['item']['status']
+        );
+        self::assertSame(
+            85,
+            $updateResponse['item']['score']
+        );
+
         $client->request('GET', '/api/watchlist');
-        $this->assertEquals(200, $client->getResponse()->getStatusCode());
-        $listResponse = json_decode($client->getResponse()->getContent(), true);
-        $this->assertCount(1, $listResponse);
 
-        // Test deleting from watchlist
-        $client->request('DELETE', '/api/watchlist/'.$animeId);
-        $this->assertEquals(204, $client->getResponse()->getStatusCode());
+        self::assertResponseIsSuccessful();
 
-        // Verify deletion
+        $listResponse = json_decode(
+            $client->getResponse()->getContent(),
+            true,
+            512,
+            JSON_THROW_ON_ERROR
+        );
+
+        self::assertArrayHasKey('data', $listResponse);
+        self::assertCount(1, $listResponse['data']);
+        self::assertSame(
+            $animeId,
+            $listResponse['data'][0]['animeId']
+        );
+
+        $client->request(
+            'DELETE',
+            sprintf('/api/watchlist/%d', $animeId)
+        );
+
+        self::assertResponseStatusCodeSame(204);
+
         $client->request('GET', '/api/watchlist');
-        $this->assertEquals(200, $client->getResponse()->getStatusCode());
-        $emptyResponse = json_decode($client->getResponse()->getContent(), true);
-        $this->assertCount(0, $emptyResponse);
+
+        self::assertResponseIsSuccessful();
+
+        $emptyResponse = json_decode(
+            $client->getResponse()->getContent(),
+            true,
+            512,
+            JSON_THROW_ON_ERROR
+        );
+
+        self::assertArrayHasKey('data', $emptyResponse);
+        self::assertCount(0, $emptyResponse['data']);
     }
 }
