@@ -1,40 +1,53 @@
-# Manlist_Back.Dockerfile
+FROM composer:2 AS composer
+
+WORKDIR /app
+
+COPY composer.json composer.lock symfony.lock ./
+
+RUN composer install \
+    --no-dev \
+    --prefer-dist \
+    --no-interaction \
+    --optimize-autoloader
+
+
 FROM php:8.2-apache
 
-# Activer le module Apache rewrite
-RUN a2enmod rewrite
+ENV APP_ENV=prod
+ENV APP_DEBUG=0
 
-# Installer les dépendances système
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && \
+    apt-get install -y \
     git \
     unzip \
+    curl \
     libpq-dev \
     libicu-dev \
-    libzip-dev \
-    && docker-php-ext-install pdo pdo_pgsql intl zip
+    libzip-dev && \
+    docker-php-ext-install \
+    pdo \
+    pdo_pgsql \
+    intl \
+    zip \
+    opcache && \
+    rm -rf /var/lib/apt/lists/*
 
-# Installer Composer
-COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+RUN a2enmod rewrite headers expires
 
-# Copier l'application
 COPY . /var/www/html
+
+COPY --from=composer /app/vendor /var/www/html/vendor
+
 WORKDIR /var/www/html
 
-# Installer les dépendances PHP
-RUN composer install --no-dev --optimize-autoloader
+ENV APACHE_DOCUMENT_ROOT=/var/www/html/public
 
-# Configurer Apache
-ENV APACHE_DOCUMENT_ROOT /var/www/html/public
-RUN sed -ri -e 's!/var/www/html!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/sites-available/*.conf
-RUN sed -ri -e 's!/var/www/!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/apache2.conf /etc/apache2/conf-available/*.conf
+RUN sed -ri \
+    -e 's!/var/www/html!${APACHE_DOCUMENT_ROOT}!g' \
+    /etc/apache2/sites-available/*.conf
 
-# Définir les permissions
 RUN chown -R www-data:www-data var
 
-# Variables d'environnement
-ENV APP_ENV=prod
-ENV APP_SECRET=your_secret_here
-ENV DATABASE_URL=postgresql://db_user:db_password@db_host:5432/db_name
-
-# Exposer le port
 EXPOSE 80
+
+CMD ["apache2-foreground"]
