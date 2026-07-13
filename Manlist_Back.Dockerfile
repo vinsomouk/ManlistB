@@ -1,4 +1,4 @@
-FROM composer:2 AS composer
+FROM composer:2 AS vendor
 
 WORKDIR /app
 
@@ -8,45 +8,49 @@ RUN composer install \
     --no-dev \
     --prefer-dist \
     --no-interaction \
-    --optimize-autoloader
-
+    --no-progress \
+    --optimize-autoloader \
+    --no-scripts
 
 FROM php:8.2-apache
 
 ENV APP_ENV=prod
 ENV APP_DEBUG=0
+ENV APACHE_DOCUMENT_ROOT=/var/www/html/public
 
 RUN apt-get update && \
-    apt-get install -y \
-    git \
-    unzip \
-    curl \
-    libpq-dev \
-    libicu-dev \
-    libzip-dev && \
+    apt-get install -y --no-install-recommends \
+        git \
+        unzip \
+        libpq-dev \
+        libicu-dev \
+        libzip-dev && \
     docker-php-ext-install \
-    pdo \
-    pdo_pgsql \
-    intl \
-    zip \
-    opcache && \
+        pdo_pgsql \
+        intl \
+        zip && \
+    a2enmod rewrite && \
     rm -rf /var/lib/apt/lists/*
-
-RUN a2enmod rewrite headers expires
-
-COPY . /var/www/html
-
-COPY --from=composer /app/vendor /var/www/html/vendor
 
 WORKDIR /var/www/html
 
-ENV APACHE_DOCUMENT_ROOT=/var/www/html/public
+COPY . .
+COPY .env.prod .env
+
+COPY --from=vendor /app/vendor ./vendor
 
 RUN sed -ri \
-    -e 's!/var/www/html!${APACHE_DOCUMENT_ROOT}!g' \
-    /etc/apache2/sites-available/*.conf
+        -e 's!/var/www/html!${APACHE_DOCUMENT_ROOT}!g' \
+        /etc/apache2/sites-available/*.conf && \
+    sed -ri \
+        -e 's!/var/www/!${APACHE_DOCUMENT_ROOT}!g' \
+        /etc/apache2/apache2.conf \
+        /etc/apache2/conf-available/*.conf
 
-RUN chown -R www-data:www-data var
+RUN mkdir -p var/cache var/log public/uploads && \
+    chown -R www-data:www-data var public/uploads && \
+    php bin/console cache:clear --env=prod --no-debug && \
+    php bin/console assets:install public --env=prod --no-debug
 
 EXPOSE 80
 
