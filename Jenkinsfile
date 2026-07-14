@@ -10,7 +10,7 @@ pipeline {
     }
 
     environment {
-    DOCKER_IMAGE = 'manlist-back'
+    DOCKER_IMAGE = 'vmk700/manlist-back'
     TEST_DB_CONTAINER = 'manlist-postgres-test'
     TEST_DB_PORT = '55432'
 
@@ -125,11 +125,27 @@ pipeline {
         }
 
         stage('Push Registry') {
-            when {
-                expression {
-                    return false
-                }
+    when {
+        branch 'main'
+    }
+
+    steps {
+        script {
+            docker.withRegistry(
+                'https://index.docker.io/v1/',
+                'dockerhub-creds'
+            ) {
+                docker.image(
+                    "${DOCKER_IMAGE}:${BUILD_NUMBER}"
+                ).push()
+
+                docker.image(
+                    "${DOCKER_IMAGE}:${BUILD_NUMBER}"
+                ).push('latest')
             }
+        }
+    }
+}
 
             steps {
                 echo 'Push Docker à configurer plus tard'
