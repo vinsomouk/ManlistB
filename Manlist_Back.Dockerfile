@@ -12,6 +12,7 @@ RUN composer install \
     --optimize-autoloader \
     --no-scripts
 
+
 FROM php:8.2-apache
 
 ENV APP_ENV=prod
@@ -29,7 +30,7 @@ RUN apt-get update && \
         pdo_pgsql \
         intl \
         zip && \
-    a2enmod rewrite && \
+    a2enmod rewrite headers && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /var/www/html
@@ -39,19 +40,20 @@ COPY .env.prod .env
 
 COPY --from=vendor /app/vendor ./vendor
 
-RUN sed -ri \
-        -e 's!/var/www/html!${APACHE_DOCUMENT_ROOT}!g' \
-        /etc/apache2/sites-available/*.conf && \
-    sed -ri \
-        -e 's!/var/www/!${APACHE_DOCUMENT_ROOT}!g' \
-        /etc/apache2/apache2.conf \
-        /etc/apache2/conf-available/*.conf
+# Configuration Apache dédiée à Symfony
+COPY docker/apache-vhost.conf \
+    /etc/apache2/sites-available/000-default.conf
 
-RUN mkdir -p var/cache var/log public/uploads && \
+# Script de démarrage : migrations puis Apache
+COPY docker/entrypoint.sh \
+    /usr/local/bin/manlist-entrypoint
+
+RUN chmod +x /usr/local/bin/manlist-entrypoint && \
+    mkdir -p var/cache var/log public/uploads && \
     chown -R www-data:www-data var public/uploads && \
     php bin/console cache:clear --env=prod --no-debug && \
     php bin/console assets:install public --env=prod --no-debug
 
 EXPOSE 80
 
-CMD ["apache2-foreground"]
+ENTRYPOINT ["manlist-entrypoint"]
