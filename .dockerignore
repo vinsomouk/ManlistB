@@ -1,6 +1,42 @@
+# Git
 .git
-node_modules
-var
+.gitignore
+
+# Dépendances installées localement
 vendor
+node_modules
+
+# Cache et logs Symfony
+var
+
+# Tests non nécessaires dans l'image de production
 tests
+.phpunit.result.cache
+phpunit.xml
+phpunit.xml.dist
+
+# Environnements locaux et secrets
 .env
+.env.local
+.env.*.local
+
+# Le fichier .env.prod reste volontairement disponible
+# car le Dockerfile le copie comme environnement neutre de build.
+
+# Jenkins
+JenkinsAgent
+
+# IDE
+.vscode
+.idea
+
+# Système
+.DS_Store
+Thumbs.db
+
+# Logs et fichiers temporaires
+*.log
+cookies.txt
+
+# Documentation non nécessaire dans l'image
+README.md

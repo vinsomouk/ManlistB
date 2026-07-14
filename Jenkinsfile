@@ -11,8 +11,10 @@ pipeline {
 
     environment {
         DOCKER_IMAGE = 'vmk700/manlist-back'
+
         TEST_DB_CONTAINER = 'manlist-postgres-test'
         TEST_DB_PORT = '55432'
+
         DATABASE_URL = 'postgresql://test:test@host.docker.internal:55432/manlist?serverVersion=14&charset=utf8'
     }
 
@@ -78,6 +80,7 @@ pipeline {
                         sleep 2
                     done
 
+                    echo "PostgreSQL n'a pas démarré correctement."
                     docker logs "${TEST_DB_CONTAINER}"
                     exit 1
                 '''
@@ -100,6 +103,28 @@ pipeline {
             }
         }
 
+        stage('Dependency Security Audit') {
+            steps {
+                sh '''
+                    echo "Audit des dépendances PHP de production..."
+                    composer audit --no-dev
+                '''
+            }
+        }
+
+        stage('Scan Docker Configuration') {
+            steps {
+                sh '''
+                    docker run --rm \
+                        -v "$PWD:/workspace" \
+                        aquasec/trivy:latest config \
+                        --severity HIGH,CRITICAL \
+                        --exit-code 1 \
+                        /workspace
+                '''
+            }
+        }
+
         stage('Build Docker Image') {
             steps {
                 script {
@@ -111,15 +136,18 @@ pipeline {
             }
         }
 
-        stage('Security Scan') {
-            when {
-                expression {
-                    return false
-                }
-            }
-
+        stage('Scan Docker Image') {
             steps {
-                sh 'composer audit'
+                sh '''
+                    docker run --rm \
+                        -v /var/run/docker.sock:/var/run/docker.sock \
+                        -v trivy-cache:/root/.cache/ \
+                        aquasec/trivy:latest image \
+                        --severity HIGH,CRITICAL \
+                        --ignore-unfixed \
+                        --exit-code 1 \
+                        "${DOCKER_IMAGE}:${BUILD_NUMBER}"
+                '''
             }
         }
 
@@ -150,7 +178,7 @@ pipeline {
             }
 
             steps {
-                echo 'Déploiement à configurer plus tard'
+                echo 'Déploiement à configurer après préparation de la VM'
             }
         }
     }
