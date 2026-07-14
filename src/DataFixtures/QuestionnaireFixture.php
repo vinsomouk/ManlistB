@@ -8,9 +8,9 @@ use App\Entity\AnswerOption;
 use Doctrine\Bundle\FixturesBundle\Fixture;
 use Doctrine\Persistence\ObjectManager;
 
-class QuestionnaireFixtures extends Fixture
+final class QuestionnaireFixture extends Fixture
 {
-    public function load(ObjectManager $manager): void // Ajout du type de retour 'void'
+    public function load(ObjectManager $manager): void
     {
         $questionnaire = new Questionnaire();
         $questionnaire->setTitle("Découverte de vos préférences animés");

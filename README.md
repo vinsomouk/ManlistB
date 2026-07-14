@@ -1,110 +1,426 @@
-# Manlist - Plateforme de Watchlist Interactive pour Animés
+# 🎬 Manlist Backend
 
-Application Symfony permettant aux utilisateurs de gérer leur watchlist d'animés et de répondre à des questionnaires pour obtenir des recommandations personnalisées.
+![Symfony](https://img.shields.io/badge/Symfony-7-black?logo=symfony)
+![PHP](https://img.shields.io/badge/PHP-8.2-blue?logo=php)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-17-336791?logo=postgresql)
+![Docker](https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=white)
+![Jenkins](https://img.shields.io/badge/Jenkins-D24939?logo=jenkins&logoColor=white)
+![Render](https://img.shields.io/badge/Render-46E3B7)
+![License](https://img.shields.io/badge/License-Educational-green)
 
-## 🚀 Démarrage rapide
+---
 
-### Prérequis
-- **Docker et Docker Compose**
-- **PHP 8.2+** (optionnel pour développement local)
-- **Composer** (optionnel pour développement local)
+# 📖 Présentation
 
-### 1. Lancement avec Docker Compose
+Manlist est une plateforme permettant aux utilisateurs de gérer leur watchlist d'animés, de répondre à des questionnaires et d'obtenir des recommandations personnalisées.
+
+Ce dépôt contient le **backend** développé avec **Symfony**.
+
+L'application expose une API REST consommée par le frontend React.
+
+---
+
+# 🚀 Fonctionnalités
+
+| Fonctionnalité | Statut |
+|---------------|:------:|
+| Authentification | ✅ |
+| Inscription | ✅ |
+| Déconnexion | ✅ |
+| Vérification de session | ✅ |
+| Gestion du profil | ✅ |
+| Upload d'image de profil | ✅ |
+| Watchlist | ✅ |
+| Questionnaires | ✅ |
+| Réponses utilisateur | ✅ |
+| Recommandations | ✅ |
+| API REST | ✅ |
+| PostgreSQL | ✅ |
+
+---
+
+# 🏗 Architecture
+
+```
+                 React Frontend
+                       │
+                HTTP / REST API
+                       │
+                 Symfony Backend
+                       │
+                 Doctrine ORM
+                       │
+                  PostgreSQL
+```
+
+---
+
+# 🛠 Technologies
+
+- Symfony 7
+- PHP 8.2
+- Doctrine ORM
+- PostgreSQL
+- Composer
+- Apache
+- Docker
+- Jenkins
+- Docker Hub
+- Render
+
+---
+
+# 📂 Structure du projet
+
+```
+Manlist-Back
+│
+├── bin/
+├── config/
+├── migrations/
+├── public/
+├── src/
+│   ├── Controller/
+│   ├── Entity/
+│   ├── Repository/
+│   ├── Security/
+│   ├── Service/
+│   ├── DataFixtures/
+│   └── Command/
+│
+├── tests/
+├── var/
+├── vendor/
+│
+├── Jenkinsfile
+├── Manlist_Back.Dockerfile
+├── compose.yaml
+└── composer.json
+```
+
+---
+
+# ⚙ Installation
+
+## Prérequis
+
+- PHP 8.2+
+- Composer
+- PostgreSQL
+- Docker (optionnel)
+
+## Cloner le dépôt
 
 ```bash
-git clone https://github.com/votre-username/manlist-back.git
-cd manlist-back
+git clone https://github.com/vinsomouk/ManlistB.git
 
-# Lancer tous les services
-docker-compose up -d --build
+cd Manlist-Back
+```
 
-# Initialiser la base de données
-docker-compose exec php bin/console doctrine:migrations:migrate -n
-docker-compose exec php bin/console doctrine:fixtures:load -n
+## Installer les dépendances
 
-# Accéder à l'application
-http://localhost:8080
+```bash
+composer install
+```
 
-2. Commandes Docker utiles
+## Configurer les variables d'environnement
 
-# Accéder au conteneur PHP
-docker-compose exec php 
+Créer un fichier `.env.local` si nécessaire puis configurer :
 
-# Voir les logs
-docker-compose logs -f php
+```
+APP_ENV=dev
 
-# Arrêter les conteneurs
-docker-compose down
+APP_SECRET=
 
-🧪 Tests
-Lancer tous les tests
+DATABASE_URL=
 
-# Avec Docker
-docker-compose exec php bin/phpunit
+CORS_ALLOW_ORIGIN=
+```
 
-# Avec Docker (avec couverture de code)
-docker-compose exec php XDEBUG_MODE=coverage bin/phpunit --coverage-html var/report
+## Créer la base de données
 
-# Localement (sans Docker)
-APP_ENV=test php bin/console doctrine:database:create
-APP_ENV=test php bin/console doctrine:migrations:migrate -n
-./bin/phpunit
+```bash
+php bin/console doctrine:database:create
+```
 
-Accéder au rapport de couverture
-Après avoir lancé les tests avec couverture :
+## Exécuter les migrations
 
-open var/report/index.html  # Sur Mac
-xdg-open var/report/index.html  # Sur Linux
+```bash
+php bin/console doctrine:migrations:migrate
+```
 
-🐳 Images Docker
-1. Application Backend (Manlist_Back)
-Fichier : Dockerfile
+## Lancer Symfony
+
+```bash
+symfony server:start
+```
+
+---
+
+# 🐳 Docker
 
 Construire l'image :
 
-docker build -f Dockerfile -t manlist-back .
+```bash
+docker build \
+-f Manlist_Back.Dockerfile \
+-t manlist-back .
+```
 
-Lancer l'image :
+Lancer :
 
-cd JenkinsAgent
-docker build -f Dockerfile -t agent-manlist-back .
+```bash
+docker run \
+-p 8000:80 \
+manlist-back
+```
 
-🔧 Pipeline Jenkins
-Fichier : Jenkinsfile
+---
 
-Configuration requise
-Plugins Jenkins :
+# 🧪 Tests
 
-Docker Pipeline
-JUnit
-HTML Publisher
-Configuration :
+Exécuter tous les tests :
 
-# Créer un agent Jenkins
-docker run -d --name jenkins-agent \
-  -e JENKINS_URL=http://jenkins-host:8080 \
-  -e JENKINS_AGENT_NAME=manlist-agent \
-  agent-manlist-back
+```bash
+php bin/phpunit
+```
 
-  💻 Développement local
-Sans Docker
+Résultat actuel :
 
+```
+7 tests
+58 assertions
+
+OK
+```
+
+---
+
+# 🔒 Sécurité
+
+Le projet intègre plusieurs niveaux de sécurité.
+
+## Authentification
+
+- Login Symfony
+- Sessions sécurisées
+- Cookies HttpOnly
+- SameSite=None
+- Secure Cookies
+
+## Mots de passe
+
+- Hash automatique Symfony
+
+## CORS
+
+Configuration avec NelmioCorsBundle.
+
+Autorisation du frontend Render.
+
+## Analyse des dépendances
+
+Composer Audit :
+
+```bash
+composer audit
+```
+
+## Scan Docker
+
+Analyse automatique avec Trivy dans Jenkins.
+
+Les scans recherchent :
+
+- vulnérabilités système
+- dépendances
+- bibliothèques PHP
+
+---
+
+# 🔄 CI/CD
+
+Le pipeline Jenkins automatise :
+
+```
+Checkout
+
+↓
+
+Installation
+
+↓
+
+Validation Symfony
+
+↓
+
+Base PostgreSQL de test
+
+↓
+
+Migrations
+
+↓
+
+Tests PHPUnit
+
+↓
+
+Build Docker
+
+↓
+
+Scan Trivy
+
+↓
+
+Push Docker Hub
+```
+
+---
+
+# 🐳 Docker Hub
+
+Image publiée :
+
+```
+vmk700/manlist-back
+```
+
+Tags :
+
+```
+latest
+
+BUILD_NUMBER
+```
+
+---
+
+# ☁ Déploiement
+
+Le backend est hébergé sur Render.
+
+Au démarrage :
+
+- préparation du cache Symfony
+- attente de PostgreSQL
+- exécution automatique des migrations
+- démarrage Apache
+
+---
+
+# 🌍 Variables d'environnement
+
+| Variable | Description |
+|----------|-------------|
+| APP_ENV | Environnement Symfony |
+| APP_SECRET | Clé de chiffrement |
+| DATABASE_URL | Connexion PostgreSQL |
+| CORS_ALLOW_ORIGIN | URL du frontend |
+| APP_DEBUG | Mode debug |
+
+---
+
+# 📌 Commandes utiles
+
+Installation
+
+```bash
 composer install
-npm install
+```
 
-# Démarrer la base de données
-docker run -d --name manlist-db -e POSTGRES_PASSWORD=password -p 5432:5432 postgres:15
+Tests
 
-# Configurer la base
-php bin/console doctrine:database:create
+```bash
+php bin/phpunit
+```
+
+Migration
+
+```bash
 php bin/console doctrine:migrations:migrate
+```
 
-# Lancer le serveur
-symfony server:start -d
+Cache
 
-🤝 Contribution
-Forker le dépôt
-Créer une branche : git checkout -b feature/ma-fonctionnalite
-Commiter les changements : git commit -am 'Ajout ma fonctionnalite'
-Pusher : git push origin feature/ma-fonctionnalite
-Créer une Pull Request
+```bash
+php bin/console cache:clear
+```
+
+Validation des services
+
+```bash
+php bin/console lint:container
+```
+
+---
+
+# 🚀 Déploiement continu
+
+Le projet utilise :
+
+- GitHub
+- Jenkins
+- Docker
+- Docker Hub
+- Render
+
+Architecture du pipeline :
+
+```
+Developer
+
+↓
+
+GitHub
+
+↓
+
+Webhook (compatible)
+
+↓
+
+Jenkins
+
+↓
+
+Tests
+
+↓
+
+Build Docker
+
+↓
+
+Trivy
+
+↓
+
+Docker Hub
+
+↓
+
+Render
+```
+
+---
+
+# 📈 Évolutions possibles
+
+- Authentification OAuth (Google, Discord)
+- Notifications
+- API AniList complète
+- Cache Redis
+- Pagination
+- Tableau de bord administrateur
+- Déploiement Kubernetes
+
+---
+
+# 👨‍💻 Auteur
+
+Projet réalisé dans le cadre du **Titre Professionnel Concepteur Développeur d'Applications (CDA)**.
+
+Développé par **Khalidou Diakité**.
